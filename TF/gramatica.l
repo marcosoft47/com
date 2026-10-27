@@ -1,11 +1,6 @@
 %{
 	// flex gramatica.l && gcc lex.yy.c -o analisador -lm
-	 /*
- 	Analisador Léxico escrito em Flex
-	Alunos:
-		Guilherme Gamaliel Lima;
-		Marco Antonio Reche Rigon 
-	*/
+
     #include <math.h>
 
     /* Controle de indentação (INIDEBL / FIMDEBL) */
