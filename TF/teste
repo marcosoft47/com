@@ -1,4 +1,36 @@
-if
-numero
-123
-456 aeiou
+import math
+
+def fatorial(n):
+    resultado = 1
+    while n > 1:
+        resultado = resultado * n
+        n = n - 1
+    return resultado
+
+def media(a, b, c):
+    return (a + b + c) / 3
+
+def nada():
+    return
+
+x = 10
+y = (x + 2) * 3 - x / 2
+
+if x == 10:
+    x = x + 1
+else:
+    x = x - 1
+
+if y != 0:
+    for i in x:
+        if i <= 5:
+            y = y + i
+        else:
+            if i >= 8:
+                y = y - i
+    z = y
+
+while x < 100:
+    x = x * 2
+
+x + y

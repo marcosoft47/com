@@ -1,0 +1,7 @@
+def soma(a, b):
+    c = a + b
+    return c
+
+x = 1
+if x > 0
+    x = x + 1

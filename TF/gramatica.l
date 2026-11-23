@@ -1,7 +1,11 @@
 %{
-	// flex gramatica.l && gcc lex.yy.c -o analisador -lm
+	// bison -d gramatica.y && flex gramatica.l && gcc gramatica.tab.c lex.yy.c -o analisador -lm
 
-    #include <math.h>
+    #include <stdio.h>
+    #include <stdlib.h>
+    #include "gramatica.tab.h"
+
+    void yyerror(const char *msg);
 
     /* Controle de indentação (INIDEBL / FIMDEBL) */
     #define MAX_NIVEIS 100
@@ -9,6 +13,11 @@
 
     int pilha_indent[MAX_NIVEIS] = {0};
     int topo = 0;
+
+    /* Quantidade de FIMDEBL ainda a serem entregues ao analisador sintático
+       (um recuo pode fechar vários blocos de uma vez, mas o yylex só
+       retorna um token por chamada) */
+    int fimdebl_pendentes = 0;
 
     /* Calcula a largura da indentação, contando TAB como TAM_TAB espaços */
     int largura_indent(const char *s, int n) {
@@ -22,25 +31,35 @@
         return largura;
     }
 
-    void trata_indentacao(int largura) {
+    /* Retorna INIDEBL, FIMDEBL ou 0 (mesmo nível de indentação) */
+    int trata_indentacao(int largura) {
         if (largura > pilha_indent[topo]) {
             if (topo + 1 >= MAX_NIVEIS) {
-                printf("Erro: excesso de níveis de indentação\n");
-                return;
+                yyerror("excesso de níveis de indentação");
+                exit(1);
             }
             pilha_indent[++topo] = largura;
-            printf("INIDEBL\n");
-        } else {
-            while (largura < pilha_indent[topo]) {
-                topo--;
-                printf("FIMDEBL\n");
-            }
-            if (largura != pilha_indent[topo])
-                printf("Erro: indentação inconsistente\n");
+            return INIDEBL;
         }
+
+        while (largura < pilha_indent[topo]) {
+            topo--;
+            fimdebl_pendentes++;
+        }
+        if (largura != pilha_indent[topo]) {
+            yyerror("indentação inconsistente");
+            exit(1);
+        }
+        if (fimdebl_pendentes > 0) {
+            fimdebl_pendentes--;
+            return FIMDEBL;
+        }
+        return 0;
     }
 %}
 %option noyywrap
+%option yylineno
+%option nounput noinput
 
 /* Estado de início de linha, onde a indentação é analisada */
 %x INDENT
@@ -54,95 +73,79 @@ NUMERO  [0-9]
 */
 %%
 
+ /* Executado a cada chamada do yylex: na primeira chamada ativa o estado
+    INDENT (para analisar a indentação da primeira linha) e, nas demais,
+    entrega os FIMDEBL pendentes */
+    static int primeira_chamada = 1;
+    if (primeira_chamada) {
+        primeira_chamada = 0;
+        BEGIN(INDENT);
+    }
+    if (fimdebl_pendentes > 0) {
+        fimdebl_pendentes--;
+        return FIMDEBL;
+    }
+
  /* ---------- Indentação (início de linha) ---------- */
 
 <INDENT>[ \t\r]*\n  /* linha em branco: ignora */
 
 <INDENT>[ \t]*[^ \t\r\n] {
     yyless(yyleng - 1);   /* devolve o primeiro caractere da linha */
-    trata_indentacao(largura_indent(yytext, yyleng));
     BEGIN(INITIAL);
+    int token = trata_indentacao(largura_indent(yytext, yyleng));
+    if (token)
+        return token;
 }
 
-<INDENT><<EOF>> {
-    while (topo > 0) {
+ /* Fim de arquivo: fecha todos os blocos ainda abertos, um por chamada */
+<INDENT,INITIAL><<EOF>> {
+    if (topo > 0) {
         topo--;
-        printf("FIMDEBL\n");
+        return FIMDEBL;
     }
     yyterminate();
 }
 
  /* ---------- Palavras reservadas ---------- */
 
-"if"      { printf("palavra reservada: %s\n", yytext); }
-"else"    { printf("palavra reservada: %s\n", yytext); }
-"while"   { printf("palavra reservada: %s\n", yytext); }
-"for"     { printf("palavra reservada: %s\n", yytext); }
-"in"      { printf("palavra reservada: %s\n", yytext); }
-"def"     { printf("palavra reservada: %s\n", yytext); }
-"return"  { printf("palavra reservada: %s\n", yytext); }
-"import"  { printf("palavra reservada: %s\n", yytext); }
+"if"      { return IF; }
+"else"    { return ELSE; }
+"while"   { return WHILE; }
+"for"     { return FOR; }
+"in"      { return IN; }
+"def"     { return DEF; }
+"return"  { return RETURN; }
+"import"  { return IMPORT; }
 
  /* ---------- Operadores relacionais ---------- */
 
-"=="  { printf("operador relacional: %s\n", yytext); }
-"!="  { printf("operador relacional: %s\n", yytext); }
-"<="  { printf("operador relacional: %s\n", yytext); }
-">="  { printf("operador relacional: %s\n", yytext); }
-"<"   { printf("operador relacional: %s\n", yytext); }
-">"   { printf("operador relacional: %s\n", yytext); }
+"=="  { return IGUAL; }
+"!="  { return DIFERENTE; }
+"<="  { return MENOR_IGUAL; }
+">="  { return MAIOR_IGUAL; }
+"<"   { return MENOR; }
+">"   { return MAIOR; }
 
- /* ---------- Atribuição e operadores aritméticos ---------- */
+ /* ---------- Atribuição, operadores aritméticos e delimitadores ---------- */
 
-"="   { printf("atribuição: %s\n", yytext); }
-"+"   { printf("operador aritmético: %s\n", yytext); }
-"-"   { printf("operador aritmético: %s\n", yytext); }
-"*"   { printf("operador aritmético: %s\n", yytext); }
-"/"   { printf("operador aritmético: %s\n", yytext); }
-
- /* ---------- Delimitadores ---------- */
-
-"("   { printf("abre parênteses: %s\n", yytext); }
-")"   { printf("fecha parênteses: %s\n", yytext); }
-":"   { printf("dois pontos: %s\n", yytext); }
-","   { printf("vírgula: %s\n", yytext); }
+"="|"+"|"-"|"*"|"/"|"("|")"|":"|","  { return yytext[0]; }
 
  /* ---------- Identificadores e números ---------- */
 
-{NOME} {
-    printf("identificador: %s\n", yytext);
-}
+{NOME}       { return NOME; }
 
-{NUMERO}+  {
-    printf("número: %d\n", atoi(yytext));
-}
+{NUMERO}+    { return NUMERO; }
 
 \n  { BEGIN(INDENT); /* nova linha: analisa a indentação */ }
 
 [ \t\r]+  /* ignora espaços em branco */
 
-<<EOF>> {
-    while (topo > 0) {
-        topo--;
-        printf("FIMDEBL\n");
-    }
-    yyterminate();
+. {
+    fprintf(stderr, "Erro léxico na linha %d: caractere não reconhecido '%s'\n", yylineno, yytext);
+    exit(1);
 }
-
-. {printf("Não reconhecido: %s\n", yytext);}
 
 %%
 
-int main(int argc, char** argv )
-{
-	++argv, --argc;
-	if ( argc > 0 )
-		yyin = fopen( argv[0], "r" );
-	else
-		yyin = stdin;
-
-	BEGIN(INDENT);   /* a primeira linha também tem a indentação analisada */
-	yylex();
-
-	return 0;
-}
+ /* O main está em gramatica.y */

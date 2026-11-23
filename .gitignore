@@ -1,0 +1,8 @@
+# Arquivos gerados pelo Flex e pelo Bison
+# lex.yy.c
+*.tab.c
+*.tab.h
+*.output
+
+*.zip
+.vscode/
